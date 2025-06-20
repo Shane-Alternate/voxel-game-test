@@ -4,14 +4,12 @@ import { WorldRenderer } from './worldRenderer.js';
 import { Player } from './player.js';
 import { Interaction } from './interaction.js';
 import * as C from './constants.js';
-import { blockTypes } from './blocks.js'; // Import blockTypes for UI
+import { blockTypes } from './blocks.js';
 
 // --- BASIC SETUP ---
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87CEEB);
-
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
@@ -30,22 +28,23 @@ worldRenderer.update();
 
 // --- PLAYER & INTERACTION ---
 const player = new Player(camera, document.body);
-player.position.set(C.worldWidth / 2, C.worldHeight, C.worldDepth / 2);
+player.position.set(C.worldWidth / 2, C.worldHeight + 5, C.worldDepth / 2);
 const interaction = new Interaction(camera, scene, worldRenderer, player);
 
 // --- UI & CONTROLS ---
+const uiContainer = document.getElementById('ui-container');
 const hotbarElement = document.getElementById('hotbar');
+const popupElement = document.getElementById('block-popup');
+let popupTimeout;
 
 function updateHotbarUI() {
-    hotbarElement.innerHTML = ''; // Clear previous slots
+    hotbarElement.innerHTML = '';
     player.hotbar.forEach((blockId, index) => {
         const slot = document.createElement('div');
         slot.classList.add('hotbar-slot');
         if (index === player.selectedSlot) {
             slot.classList.add('selected');
         }
-        
-        // Get the texture from the block definition
         const blockType = blockTypes[blockId];
         if (blockType && blockType.material.map) {
             const color = blockType.material.map.image.getContext('2d').fillStyle;
@@ -55,11 +54,26 @@ function updateHotbarUI() {
     });
 }
 
+function showBlockPopup() {
+    clearTimeout(popupTimeout); // Clear previous timeout if switching fast
+    const blockId = player.getHotbarSelection();
+    const blockName = blockTypes[blockId].name;
+    popupElement.textContent = blockName.charAt(0).toUpperCase() + blockName.slice(1);
+    popupElement.classList.add('show');
+    popupTimeout = setTimeout(() => {
+        popupElement.classList.remove('show');
+    }, 1500); // Fade out after 1.5 seconds
+}
+
 const instructions = document.getElementById('instructions');
 const startButton = document.getElementById('startButton');
-startButton.addEventListener('click', () => player.controls.lock());
-player.controls.addEventListener('lock', () => { instructions.style.display = 'none'; hotbarElement.style.display = 'flex'; });
-player.controls.addEventListener('unlock', () => { instructions.style.display = 'block'; hotbarElement.style.display = 'none'; });
+startButton.addEventListener('click', () => {
+    player.controls.lock();
+    updateHotbarUI();
+    showBlockPopup();
+});
+player.controls.addEventListener('lock', () => { instructions.style.display = 'none'; uiContainer.style.display = 'flex'; });
+player.controls.addEventListener('unlock', () => { instructions.style.display = 'block'; uiContainer.style.display = 'none'; });
 
 window.addEventListener('mousedown', (e) => interaction.handleMouseClick(e));
 window.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -69,13 +83,17 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// Hotbar selection listener
-window.addEventListener('wheel', (e) => {
+// Hotbar selection listener for number keys
+window.addEventListener('keydown', (e) => {
     if (!player.controls.isLocked) return;
-    const delta = Math.sign(e.deltaY);
-    player.changeSlot(delta);
-    updateHotbarUI();
+    const key = parseInt(e.key);
+    if (key >= 1 && key <= player.hotbar.length) {
+        player.selectSlot(key - 1);
+        updateHotbarUI();
+        showBlockPopup();
+    }
 });
+
 
 // --- GAME LOOP ---
 const clock = new THREE.Clock();
@@ -92,12 +110,13 @@ function animate() {
         accumulator -= C.fixedUpdateInterval;
     }
     
-    player.updateCamera();
-    interaction.update();
+    if(player.controls.isLocked) {
+        player.updateCamera();
+        interaction.update();
+    }
     renderer.render(scene, camera);
 }
 
 // Initial UI setup
-updateHotbarUI();
-hotbarElement.style.display = 'none'; // Hide until game starts
+uiContainer.style.display = 'none';
 animate();
