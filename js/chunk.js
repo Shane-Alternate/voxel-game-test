@@ -93,19 +93,18 @@ export class Chunk {
                     const blockType = this.getBlock(x, y, z);
                     if (blockType === 0) continue;
 
-                    const worldX = this.chunkX * C.chunkSize + x;
-                    const worldY = y;
-                    const worldZ = this.chunkZ * C.chunkSize + z;
-                    
                     if (!geometryData[blockType]) {
                         geometryData[blockType] = { positions:[], normals:[], uvs:[], colors:[], indices:[], vertexCount:0 };
                     }
                     const data = geometryData[blockType];
 
                     for (const { dir, corners, uv } of faces) {
+                        const worldX = this.chunkX * C.chunkSize + x;
+                        const worldY = y;
+                        const worldZ = this.chunkZ * C.chunkSize + z;
                         const neighbor = getBlock(worldX + dir[0], worldY + dir[1], worldZ + dir[2]);
                         
-                        if (neighbor === 0) { // If the neighbor is air, draw this face
+                        if (neighbor === 0) {
                             for (let i = 0; i < 4; i++) {
                                 const corner = corners[i];
                                 data.positions.push(worldX + corner.pos[0], worldY + corner.pos[1], worldZ + corner.pos[2]);
@@ -126,43 +125,63 @@ export class Chunk {
             }
         }
         
-        if (Object.keys(geometryData).length === 0) return;
-
-        const finalGeometry = new THREE.BufferGeometry();
+        // *** FIX: Correctly combine geometries into one mesh with material groups ***
+        
         const finalPositions = [], finalNormals = [], finalUvs = [], finalColors = [], finalIndices = [];
         const materials = [];
         let overallVertexCount = 0;
         let overallIndexCount = 0;
 
+        // Loop through each block type that has geometry
         for (const blockType in geometryData) {
             const data = geometryData[blockType];
             if (data.vertexCount === 0) continue;
 
+            // Append this block type's geometry data to the final arrays
             finalPositions.push(...data.positions);
             finalNormals.push(...data.normals);
             finalUvs.push(...data.uvs);
             finalColors.push(...data.colors);
+            
+            // Remap indices by adding the current total vertex count
             for (const index of data.indices) {
                 finalIndices.push(index + overallVertexCount);
             }
-
+            
+            // Create and add the material for this group
             const material = blockTypes[blockType].material.clone();
             material.vertexColors = true;
             const materialIndex = materials.push(material) - 1;
 
-            finalGeometry.addGroup(overallIndexCount, data.indices.length, materialIndex);
+            // Create a material group for this section of the geometry
+            const geometry = new THREE.BufferGeometry(); // Temporary geometry for addGroup
+            geometry.addGroup(overallIndexCount, data.indices.length, materialIndex);
 
+            // Update offsets for the next block type
             overallVertexCount += data.vertexCount;
             overallIndexCount += data.indices.length;
         }
-        
+
+        // If there's no geometry to render at all, exit
         if (overallVertexCount === 0) return;
 
+        // Create a single, final BufferGeometry from the combined arrays
+        const finalGeometry = new THREE.BufferGeometry();
         finalGeometry.setAttribute('position', new THREE.Float32BufferAttribute(finalPositions, 3));
         finalGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(finalNormals, 3));
         finalGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(finalUvs, 2));
         finalGeometry.setAttribute('color', new THREE.Float32BufferAttribute(finalColors, 3));
         finalGeometry.setIndex(finalIndices);
+        
+        // Re-apply the material groups to the final geometry
+        overallIndexCount = 0;
+        let materialIndex = 0;
+        for (const blockType in geometryData) {
+            const data = geometryData[blockType];
+            if (data.vertexCount === 0) continue;
+            finalGeometry.addGroup(overallIndexCount, data.indices.length, materialIndex++);
+            overallIndexCount += data.indices.length;
+        }
 
         this.mesh = new THREE.Mesh(finalGeometry, materials);
         this.scene.add(this.mesh);
@@ -186,4 +205,5 @@ export class Chunk {
     }
 }
 
+// Pre-computed face data structure
 const faces = [{dir:[1,0,0],corners:[{pos:[1,0,0],ao:[[0,-1,0],[0,0,-1],[0,-1,-1]]},{pos:[1,1,0],ao:[[0,1,0],[0,0,-1],[0,1,-1]]},{pos:[1,1,1],ao:[[0,1,0],[0,0,1],[0,1,1]]},{pos:[1,0,1],ao:[[0,-1,0],[0,0,1],[0,-1,1]]}],uv:[0,0,0,1,1,1,1,0]},{dir:[-1,0,0],corners:[{pos:[0,0,1],ao:[[0,-1,0],[0,0,1],[0,-1,1]]},{pos:[0,1,1],ao:[[0,1,0],[0,0,1],[0,1,1]]},{pos:[0,1,0],ao:[[0,1,0],[0,0,-1],[0,1,-1]]},{pos:[0,0,0],ao:[[0,-1,0],[0,0,-1],[0,-1,-1]]}],uv:[0,0,0,1,1,1,1,0]},{dir:[0,1,0],corners:[{pos:[0,1,0],ao:[[-1,0,0],[0,0,-1],[-1,0,-1]]},{pos:[0,1,1],ao:[[-1,0,0],[0,0,1],[-1,0,1]]},{pos:[1,1,1],ao:[[1,0,0],[0,0,1],[1,0,1]]},{pos:[1,1,0],ao:[[1,0,0],[0,0,-1],[1,0,-1]]}],uv:[0,0,0,1,1,1,1,0]},{dir:[0,-1,0],corners:[{pos:[0,0,1],ao:[[-1,0,0],[0,0,1],[-1,0,1]]},{pos:[0,0,0],ao:[[-1,0,0],[0,0,-1],[-1,0,-1]]},{pos:[1,0,0],ao:[[1,0,0],[0,0,-1],[1,0,-1]]},{pos:[1,0,1],ao:[[1,0,0],[0,0,1],[1,0,1]]}],uv:[0,0,0,1,1,1,1,0]},{dir:[0,0,1],corners:[{pos:[0,0,1],ao:[[-1,0,0],[0,-1,0],[-1,-1,0]]},{pos:[0,1,1],ao:[[-1,0,0],[0,1,0],[-1,1,0]]},{pos:[1,1,1],ao:[[1,0,0],[0,1,0],[1,1,0]]},{pos:[1,0,1],ao:[[1,0,0],[0,-1,0],[1,-1,0]]}],uv:[0,0,0,1,1,1,1,0]},{dir:[0,0,-1],corners:[{pos:[1,0,0],ao:[[1,0,0],[0,-1,0],[1,-1,0]]},{pos:[1,1,0],ao:[[1,0,0],[0,1,0],[1,1,0]]},{pos:[0,1,0],ao:[[-1,0,0],[0,1,0],[-1,1,0]]},{pos:[0,0,0],ao:[[-1,0,0],[0,-1,0],[-1,-1,0]]}],uv:[0,0,0,1,1,1,1,0]}];
