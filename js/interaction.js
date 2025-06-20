@@ -1,9 +1,8 @@
 import * as THREE from 'three';
 import { setBlock } from './world.js';
-// Removed 'C' import as it's no longer needed here
+import * as C from './constants.js'; // Import constants
 
 export class Interaction {
-    // ... constructor remains the same ...
     constructor(camera, scene, worldRenderer, player) {
         this.camera = camera;
         this.scene = scene;
@@ -20,12 +19,14 @@ export class Interaction {
         this.scene.add(this.highlightMesh);
     }
     
-    // ... update() remains the same ...
     update() {
         if (!this.player.controls.isLocked) {
              this.highlightMesh.visible = false;
              return;
         }
+        
+        // --- SET PLAYER REACH LIMIT ---
+        this.raycaster.far = C.playerReach; 
         
         this.raycaster.setFromCamera({ x: 0, y: 0 }, this.camera);
         const intersects = this.raycaster.intersectObjects(Object.values(this.worldRenderer.meshes));
@@ -53,12 +54,13 @@ export class Interaction {
         }
     }
 
+    // --- handleMouseClick remains unchanged ---
     handleMouseClick(event) {
         if (!this.player.controls.isLocked || !this.intersectedBlock) return;
         const { position, normal } = this.intersectedBlock;
 
         if (event.button === 0) { // Left Click: Break
-            setBlock(position.x, position.y, position.z, 0); // Set to air
+            setBlock(position.x, position.y, position.z, 0);
             this.worldRenderer.update();
         } else if (event.button === 2) { // Right Click: Place
             const placePos = {
@@ -76,7 +78,6 @@ export class Interaction {
                 return;
             }
 
-            // *** Use selected block from hotbar ***
             const selectedBlockId = this.player.getHotbarSelection();
             setBlock(placePos.x, placePos.y, placePos.z, selectedBlockId);
             this.worldRenderer.update();
