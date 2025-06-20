@@ -9,7 +9,11 @@ export const playerSpeed = 5;
 export const playerJumpHeight = 8;
 export const playerWidth = 0.5;
 export const playerHeight = 1.8;
-export const gravity = -19.6; // (2 * 9.8)
+export const playerEyeHeight = 1.62; // The camera's height from the player's base
+
+// Physics
+export const gravity = 32;
+export const fixedUpdateInterval = 1 / 60; // 60 times per second
 
 // Other
 export const selectedBlockType = 1; // Start with grass
