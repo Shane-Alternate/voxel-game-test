@@ -1,13 +1,13 @@
 import * as THREE from 'three';
-import { setBlock } from './world.js';
-import * as C from './constants.js'; // Import constants
+import { setBlock } from './chunk.js';
+import * as C from './constants.js';
 
 export class Interaction {
-    constructor(camera, scene, worldRenderer, player) {
+    constructor(camera, scene, player, chunks) {
         this.camera = camera;
         this.scene = scene;
-        this.worldRenderer = worldRenderer;
         this.player = player;
+        this.chunks = chunks;
         this.raycaster = new THREE.Raycaster();
         this.intersectedBlock = null;
 
@@ -25,24 +25,20 @@ export class Interaction {
              return;
         }
         
-        // --- SET PLAYER REACH LIMIT ---
         this.raycaster.far = C.playerReach; 
-        
         this.raycaster.setFromCamera({ x: 0, y: 0 }, this.camera);
-        const intersects = this.raycaster.intersectObjects(Object.values(this.worldRenderer.meshes));
+        
+        const chunkMeshes = [...this.chunks.values()].map(c => c.mesh).filter(m => m);
+        const intersects = this.raycaster.intersectObjects(chunkMeshes);
 
         if (intersects.length > 0) {
             const intersection = intersects[0];
-            const instanceId = intersection.instanceId;
-            const mesh = intersection.object;
-            const matrix = new THREE.Matrix4();
-            mesh.getMatrixAt(instanceId, matrix);
-            const position = new THREE.Vector3().setFromMatrixPosition(matrix);
+            const position = new THREE.Vector3().copy(intersection.point).addScaledVector(intersection.face.normal, -0.5);
             
             const blockPos = {
-                x: Math.round(position.x - 0.5),
-                y: Math.round(position.y - 0.5),
-                z: Math.round(position.z - 0.5)
+                x: Math.floor(position.x),
+                y: Math.floor(position.y),
+                z: Math.floor(position.z)
             };
             
             this.highlightMesh.position.set(blockPos.x + 0.5, blockPos.y + 0.5, blockPos.z + 0.5);
@@ -54,14 +50,12 @@ export class Interaction {
         }
     }
 
-    // --- handleMouseClick remains unchanged ---
     handleMouseClick(event) {
         if (!this.player.controls.isLocked || !this.intersectedBlock) return;
         const { position, normal } = this.intersectedBlock;
 
         if (event.button === 0) { // Left Click: Break
             setBlock(position.x, position.y, position.z, 0);
-            this.worldRenderer.update();
         } else if (event.button === 2) { // Right Click: Place
             const placePos = {
                 x: position.x + normal.x,
@@ -80,7 +74,6 @@ export class Interaction {
 
             const selectedBlockId = this.player.getHotbarSelection();
             setBlock(placePos.x, placePos.y, placePos.z, selectedBlockId);
-            this.worldRenderer.update();
         }
     }
 }
