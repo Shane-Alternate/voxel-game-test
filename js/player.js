@@ -28,15 +28,11 @@ export class Player {
     
     onKey(code, isPressed) {
         this.keys[code] = isPressed;
-        if (code === 'ControlLeft') {
-            this.isSprinting = isPressed;
-        }
+        if (code === 'ControlLeft') this.isSprinting = isPressed;
     }
 
     selectSlot(slotIndex) {
-        if (slotIndex >= 0 && slotIndex < this.hotbar.length) {
-            this.selectedSlot = slotIndex;
-        }
+        if (slotIndex >= 0 && slotIndex < this.hotbar.length) this.selectedSlot = slotIndex;
     }
 
     getHotbarSelection() {
@@ -59,14 +55,16 @@ export class Player {
         this.camera.getWorldDirection(forward);
         forward.y = 0;
         forward.normalize();
-        const right = new THREE.Vector3().crossVectors(this.camera.up, forward).negate();
+        
+        const right = new THREE.Vector3().crossVectors(this.camera.up, forward); // No need to negate, cross(up, fwd) gives right
 
         const inputDirection = new THREE.Vector3();
         if (this.controls.isLocked) {
             if (this.keys['KeyW']) inputDirection.add(forward);
             if (this.keys['KeyS']) inputDirection.sub(forward);
-            if (this.keys['KeyA']) inputDirection.add(right);
-            if (this.keys['KeyD']) inputDirection.sub(right);
+            // *** FIX: Swapped .add and .sub for correct strafing ***
+            if (this.keys['KeyA']) inputDirection.sub(right); // A = Strafe Left
+            if (this.keys['KeyD']) inputDirection.add(right); // D = Strafe Right
         }
         
         const drag = this.onGround ? C.groundDrag : C.airDrag;
@@ -91,25 +89,19 @@ export class Player {
         this.velocity.y -= C.gravity * deltaTime;
         this.velocity.y *= Math.pow(C.verticalDrag, deltaTime);
 
-        if (this.keys['Space'] && this.onGround) {
-            this.velocity.y = C.jumpInitialVelocity;
-        }
+        if (this.keys['Space'] && this.onGround) this.velocity.y = C.jumpInitialVelocity;
 
         this.onGround = false;
-        this.position.x += this.velocity.x * deltaTime;
-        this.handleXCollisions();
-        this.position.z += this.velocity.z * deltaTime;
-        this.handleZCollisions();
-        this.position.y += this.velocity.y * deltaTime;
-        this.handleYCollisions();
+        this.position.x += this.velocity.x * deltaTime; this.handleXCollisions();
+        this.position.z += this.velocity.z * deltaTime; this.handleZCollisions();
+        this.position.y += this.velocity.y * deltaTime; this.handleYCollisions();
         
         if (this.position.y < -20) {
             this.position.set(0, C.worldHeight + 5, 0);
             this.velocity.set(0, 0, 0);
         }
 
-        const { chunkX, chunkZ } = this.getChunkCoords();
-        this.currentChunkId = `${chunkX},${chunkZ}`;
+        this.currentChunkId = `${this.getChunkCoords().chunkX},${this.getChunkCoords().chunkZ}`;
     }
 
     updateCamera() {
@@ -121,20 +113,13 @@ export class Player {
         const [x1, x2] = [Math.floor(this.bounds.min.x), Math.floor(this.bounds.max.x)];
         const [y1, y2] = [Math.floor(this.bounds.min.y), Math.floor(this.bounds.max.y-0.01)];
         const [z1, z2] = [Math.floor(this.bounds.min.z), Math.floor(this.bounds.max.z)];
-    
         for (let y = y1; y <= y2; y++) {
             for (let z = z1; z <= z2; z++) {
                 if (this.velocity.x < 0 && getBlock(x1, y, z) !== 0) {
-                    this.position.x = x1 + 1 + this.halfWidth;
-                    this.velocity.x = 0;
-                    this.updateBounds();
-                    return;
+                    this.position.x = x1 + 1 + this.halfWidth; this.velocity.x = 0; this.updateBounds(); return;
                 }
                 if (this.velocity.x > 0 && getBlock(x2, y, z) !== 0) {
-                    this.position.x = x2 - this.halfWidth;
-                    this.velocity.x = 0;
-                    this.updateBounds();
-                    return;
+                    this.position.x = x2 - this.halfWidth; this.velocity.x = 0; this.updateBounds(); return;
                 }
             }
         }
@@ -144,20 +129,13 @@ export class Player {
         const [x1, x2] = [Math.floor(this.bounds.min.x), Math.floor(this.bounds.max.x)];
         const [y1, y2] = [Math.floor(this.bounds.min.y), Math.floor(this.bounds.max.y-0.01)];
         const [z1, z2] = [Math.floor(this.bounds.min.z), Math.floor(this.bounds.max.z)];
-    
         for (let y = y1; y <= y2; y++) {
             for (let x = x1; x <= x2; x++) {
                 if (this.velocity.z < 0 && getBlock(x, y, z1) !== 0) {
-                    this.position.z = z1 + 1 + this.halfWidth;
-                    this.velocity.z = 0;
-                    this.updateBounds();
-                    return;
+                    this.position.z = z1 + 1 + this.halfWidth; this.velocity.z = 0; this.updateBounds(); return;
                 }
                 if (this.velocity.z > 0 && getBlock(x, y, z2) !== 0) {
-                    this.position.z = z2 - this.halfWidth;
-                    this.velocity.z = 0;
-                    this.updateBounds();
-                    return;
+                    this.position.z = z2 - this.halfWidth; this.velocity.z = 0; this.updateBounds(); return;
                 }
             }
         }
@@ -167,21 +145,13 @@ export class Player {
         const [x1, x2] = [Math.floor(this.bounds.min.x), Math.floor(this.bounds.max.x)];
         const [y1, y2] = [Math.floor(this.bounds.min.y), Math.floor(this.bounds.max.y)];
         const [z1, z2] = [Math.floor(this.bounds.min.z), Math.floor(this.bounds.max.z)];
-    
         for (let x = x1; x <= x2; x++) {
             for (let z = z1; z <= z2; z++) {
                 if (this.velocity.y <= 0 && getBlock(x, y1, z) !== 0) {
-                    this.position.y = y1 + 1;
-                    this.velocity.y = 0;
-                    this.onGround = true;
-                    this.updateBounds();
-                    return;
+                    this.position.y = y1 + 1; this.velocity.y = 0; this.onGround = true; this.updateBounds(); return;
                 }
                 if (this.velocity.y > 0 && getBlock(x, y2, z) !== 0) {
-                    this.position.y = y2 - C.playerHeight;
-                    this.velocity.y = 0;
-                    this.updateBounds();
-                    return;
+                    this.position.y = y2 - C.playerHeight; this.velocity.y = 0; this.updateBounds(); return;
                 }
             }
         }
