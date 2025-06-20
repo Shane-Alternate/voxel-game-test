@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTML5 Voxel Game (Modular)</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="crosshair"></div>
+    <div id="instructions">
+        <h2>Voxel Game</h2>
+        <p>
+            <b>Controls:</b><br>
+            W, A, S, D: Move<br>
+            Space: Jump<br>
+            Mouse: Look<br>
+            Left Click: Break Block<br>
+            Right Click: Place Block
+        </p>
+        <button id="startButton">Click to Play</button>
+    </div>
+
+    <!-- Three.js Library & Add-ons -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/",
+                "simplex-noise": "https://cdn.jsdelivr.net/npm/simplex-noise@4.0.1/dist/esm/simplex-noise.js"
+            }
+        }
+    </script>
+    
+    <!-- Main Game Logic -->
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
