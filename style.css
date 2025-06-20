@@ -17,7 +17,7 @@ canvas {
     border: 1px solid black;
     border-radius: 50%;
     transform: translate(-50%, -50%);
-    pointer-events: none; /* Allows clicks to go through */
+    pointer-events: none;
 }
 
 #instructions {
@@ -42,4 +42,37 @@ canvas {
     background-color: #4CAF50;
     color: white;
     font-size: 1em;
+}
+
+/* NEW STYLES FOR HOTBAR */
+#hotbar {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    background-color: rgba(0, 0, 0, 0.4);
+    border: 2px solid #555;
+    border-radius: 5px;
+    padding: 5px;
+}
+
+.hotbar-slot {
+    width: 50px;
+    height: 50px;
+    border: 2px solid #888;
+    margin: 0 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: white;
+    background-clip: content-box; /* Ensures padding doesn't get colored */
+    padding: 5px;
+}
+
+.hotbar-slot.selected {
+    border-color: #fff;
+    border-width: 3px;
+    transform: scale(1.1);
 }
