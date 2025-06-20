@@ -35,7 +35,7 @@ export function setBlock(x, y, z, type) {
     const localX = THREE.MathUtils.euclideanModulo(x, C.chunkSize);
     const localZ = THREE.MathUtils.euclideanModulo(z, C.chunkSize);
     
-    chunk.setBlock(localX, y, localZ, type); // This will call updateMesh by default
+    chunk.setBlock(localX, y, localZ, type);
 
     if (localX === 0) chunks.get(`${chunkX - 1},${chunkZ}`)?.updateMesh();
     if (localX === C.chunkSize - 1) chunks.get(`${chunkX + 1},${chunkZ}`)?.updateMesh();
@@ -62,22 +62,18 @@ export class Chunk {
         chunks.set(this.id, this);
     }
 
-    // Generate terrain data for this chunk
     generate() {
         for (let x = 0; x < C.chunkSize; x++) {
             for (let z = 0; z < C.chunkSize; z++) {
                 const worldX = this.chunkX * C.chunkSize + x;
                 const worldZ = this.chunkZ * C.chunkSize + z;
-
                 const noiseVal = noise2D(worldX / C.noiseScale, worldZ / C.noiseScale);
                 const height = Math.round((noiseVal + 1) / 2 * (C.worldHeight / 2)) + Math.floor(C.worldHeight / 4);
 
                 for (let y = 0; y < height; y++) {
-                    let blockType = 3; // Stone
-                    if (y === height - 1) blockType = 1; // Grass
-                    else if (y > height - 5) blockType = 2; // Dirt
-                    
-                    // *** FIX: Call setBlock without triggering a mesh update ***
+                    let blockType = 3;
+                    if (y === height - 1) blockType = 1;
+                    else if (y > height - 5) blockType = 2;
                     this.setBlock(x, y, z, blockType, false);
                 }
             }
@@ -90,11 +86,10 @@ export class Chunk {
         return this.data[index];
     }
     
-    // *** FIX: Added optional 'update' parameter ***
     setBlock(x, y, z, type, update = true) {
         const index = y * C.chunkSize * C.chunkSize + z * C.chunkSize + x;
+        if (index < 0 || index >= this.data.length) return;
         this.data[index] = type;
-        
         if (update) {
             this.updateMesh();
         }
@@ -110,8 +105,10 @@ export class Chunk {
         const normals = [];
         const uvs = [];
         const colors = [];
+        const indices = []; // <<< The missing piece!
+        let vertexCount = 0;
 
-        const aoValues = [0.5, 0.7, 0.8, 1.0];
+        const aoValues = [0.5, 0.7, 0.85, 1.0]; // Adjusted for better contrast
 
         for (let x = 0; x < C.chunkSize; x++) {
             for (let y = 0; y < C.worldHeight; y++) {
@@ -125,7 +122,6 @@ export class Chunk {
                     
                     for (const face of ['px', 'nx', 'py', 'ny', 'pz', 'nz']) {
                         const neighbor = this.getNeighbor(x, y, z, face);
-
                         if (neighbor === 0) {
                             const { vertices, normal, uv } = this.getFaceData(face);
                             
@@ -135,10 +131,15 @@ export class Chunk {
                                 normals.push(...normal);
                                 uvs.push(uv[i * 2], uv[i * 2 + 1]);
 
-                                const [ao, _] = this.calculateAO(x, y, z, face, i);
+                                const [ao] = this.calculateAO(x, y, z, face, i);
                                 const brightness = aoValues[ao];
                                 colors.push(brightness, brightness, brightness);
                             }
+                            
+                            // *** FIX: Add indices for the two triangles of the quad ***
+                            indices.push(vertexCount, vertexCount + 1, vertexCount + 2);
+                            indices.push(vertexCount, vertexCount + 2, vertexCount + 3);
+                            vertexCount += 4;
                         }
                     }
                 }
@@ -153,17 +154,15 @@ export class Chunk {
         geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
         geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
         
-        // This is needed to make the quads render correctly
-        geometry.setIndex([0,2,1, 0,3,2, 4,6,5, 4,7,6, 8,10,9, 8,11,10, 12,14,13, 12,15,14, 16,18,17, 16,19,18, 20,22,21, 20,23,22].slice(0, positions.length / 2 * 3));
+        // *** FIX: Set the index for the geometry ***
+        geometry.setIndex(indices);
 
         this.mesh = new THREE.Mesh(geometry, this.material);
         this.scene.add(this.mesh);
     }
     
     getNeighbor(x, y, z, face) {
-        const [dx, dy, dz] = {
-            px: [1, 0, 0], nx: [-1, 0, 0], py: [0, 1, 0], ny: [0, -1, 0], pz: [0, 0, 1], nz: [0, 0, -1]
-        }[face];
+        const [dx, dy, dz] = {px:[1,0,0], nx:[-1,0,0], py:[0,1,0], ny:[0,-1,0], pz:[0,0,1], nz:[0,0,-1]}[face];
         return getBlock(this.chunkX * C.chunkSize + x + dx, y + dy, this.chunkZ * C.chunkSize + z + dz);
     }
     
@@ -195,28 +194,23 @@ export class Chunk {
     }
     
     getFaceData(face) {
-        // Since we are building one large mesh, the order of vertices now matters
-        // for creating triangles. We define them in a counter-clockwise order.
+        // Defines vertices in counter-clockwise order for correct face normals
         const data = {
-            px: { vertices: [{x:1,y:0,z:1},{x:1,y:1,z:1},{x:1,y:1,z:0},{x:1,y:0,z:0}], normal: [1,0,0], uv: [0,0, 0,1, 1,1, 1,0] },
-            nx: { vertices: [{x:0,y:0,z:0},{x:0,y:1,z:0},{x:0,y:1,z:1},{x:0,y:0,z:1}], normal: [-1,0,0], uv: [0,0, 0,1, 1,1, 1,0] },
-            py: { vertices: [{x:0,y:1,z:1},{x:0,y:1,z:0},{x:1,y:1,z:0},{x:1,y:1,z:1}], normal: [0,1,0], uv: [0,0, 0,1, 1,1, 1,0] },
-            ny: { vertices: [{x:0,y:0,z:0},{x:0,y:0,z:1},{x:1,y:0,z:1},{x:1,y:0,z:0}], normal: [0,-1,0], uv: [0,0, 0,1, 1,1, 1,0] },
-            pz: { vertices: [{x:1,y:0,z:1},{x:1,y:1,z:1},{x:0,y:1,z:1},{x:0,y:0,z:1}], normal: [0,0,1], uv: [0,0, 0,1, 1,1, 1,0] },
-            nz: { vertices: [{x:0,y:0,z:0},{x:0,y:1,z:0},{x:1,y:1,z:0},{x:1,y:0,z:0}], normal: [0,0,-1], uv: [0,0, 0,1, 1,1, 1,0] }
+            px: { vertices: [{x:1,y:0,z:0},{x:1,y:1,z:0},{x:1,y:1,z:1},{x:1,y:0,z:1}], normal: [1,0,0], uv: [0,0, 0,1, 1,1, 1,0] },
+            nx: { vertices: [{x:0,y:0,z:1},{x:0,y:1,z:1},{x:0,y:1,z:0},{x:0,y:0,z:0}], normal: [-1,0,0], uv: [0,0, 0,1, 1,1, 1,0] },
+            py: { vertices: [{x:0,y:1,z:0},{x:0,y:1,z:1},{x:1,y:1,z:1},{x:1,y:1,z:0}], normal: [0,1,0], uv: [0,0, 0,1, 1,1, 1,0] },
+            ny: { vertices: [{x:0,y:0,z:1},{x:0,y:0,z:0},{x:1,y:0,z:0},{x:1,y:0,z:1}], normal: [0,-1,0], uv: [0,0, 0,1, 1,1, 1,0] },
+            pz: { vertices: [{x:0,y:0,z:1},{x:0,y:1,z:1},{x:1,y:1,z:1},{x:1,y:0,z:1}], normal: [0,0,1], uv: [0,0, 0,1, 1,1, 1,0] },
+            nz: { vertices: [{x:1,y:0,z:0},{x:1,y:1,z:0},{x:0,y:1,z:0},{x:0,y:0,z:0}], normal: [0,0,-1], uv: [0,0, 0,1, 1,1, 1,0] }
         };
-        const indices = [];
-        const finalVertices = [];
-        for (let i = 0; i < data[face].vertices.length; i++) {
-            finalVertices.push(data[face].vertices[i]);
-        }
-        return { vertices: finalVertices, normal: data[face].normal, uv: data[face].uv };
+        return data[face];
     }
 
     dispose() {
         if (this.mesh) {
             this.scene.remove(this.mesh);
             this.mesh.geometry.dispose();
+            this.mesh = null;
         }
         chunks.delete(this.id);
     }
