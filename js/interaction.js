@@ -3,6 +3,7 @@ import { setBlock } from './world.js';
 import * as C from './constants.js';
 
 export class Interaction {
+    // ... constructor remains the same ...
     constructor(camera, scene, worldRenderer, player) {
         this.camera = camera;
         this.scene = scene;
@@ -19,6 +20,7 @@ export class Interaction {
         this.scene.add(this.highlightMesh);
     }
     
+    // ... update() remains the same ...
     update() {
         if (!this.player.controls.isLocked) {
              this.highlightMesh.visible = false;
@@ -65,8 +67,15 @@ export class Interaction {
                 z: position.z + normal.z,
             };
 
-            const playerPos = this.player.getVoxelPos();
-            if (playerPos.x === placePos.x && (playerPos.y === placePos.y || playerPos.y - 1 === placePos.y) && playerPos.z === placePos.z) {
+            // **UPDATED COLLISION CHECK**
+            // Create a bounding box for the new block
+            const newBlockBounds = new THREE.Box3(
+                new THREE.Vector3(placePos.x, placePos.y, placePos.z),
+                new THREE.Vector3(placePos.x + 1, placePos.y + 1, placePos.z + 1)
+            );
+
+            // Check if the player's bounding box intersects with the new block's box
+            if (this.player.bounds.intersectsBox(newBlockBounds)) {
                 return; // Prevent placing block inside player
             }
 
