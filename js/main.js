@@ -1,6 +1,5 @@
 import * as THREE from 'three';
-import { generateWorld } from './world.js';
-import { WorldRenderer } from './worldRenderer.js';
+import { Chunk } from './chunk.js';
 import { Player } from './player.js';
 import { Interaction } from './interaction.js';
 import * as C from './constants.js';
@@ -15,21 +14,53 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 // --- LIGHTING ---
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
 scene.add(ambientLight);
-const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
-directionalLight.position.set(1, 1, 0.5);
+const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+directionalLight.position.set(50, 50, 50); // Position light to cast some shadows
 scene.add(directionalLight);
 
-// --- WORLD ---
-generateWorld();
-const worldRenderer = new WorldRenderer(scene);
-worldRenderer.update();
+// --- CHUNK MANAGEMENT ---
+const chunks = new Map();
+let lastPlayerChunkId = '';
+
+function updateChunks() {
+    const { chunkX, chunkZ } = player.getChunkCoords();
+    const playerChunkId = `${chunkX},${chunkZ}`;
+
+    // Only update if player has moved to a new chunk
+    if (playerChunkId === lastPlayerChunkId) return;
+    lastPlayerChunkId = playerChunkId;
+
+    const chunksToRemove = new Set(chunks.keys());
+
+    // Loop through all chunks that should be visible
+    for (let x = chunkX - C.viewDistance; x <= chunkX + C.viewDistance; x++) {
+        for (let z = chunkZ - C.viewDistance; z <= chunkZ + C.viewDistance; z++) {
+            const id = `${x},${z}`;
+            chunksToRemove.delete(id); // This chunk is in range, so don't remove it
+
+            // If the chunk doesn't exist, create it
+            if (!chunks.has(id)) {
+                const chunk = new Chunk(scene, x, z);
+                chunk.generate();
+                chunk.updateMesh();
+                chunks.set(id, chunk);
+            }
+        }
+    }
+
+    // Unload any chunks that are now out of view distance
+    for (const id of chunksToRemove) {
+        chunks.get(id)?.dispose();
+        chunks.delete(id);
+    }
+}
 
 // --- PLAYER & INTERACTION ---
 const player = new Player(camera, document.body);
-player.position.set(C.worldWidth / 2, C.worldHeight + 5, C.worldDepth / 2);
-const interaction = new Interaction(camera, scene, worldRenderer, player);
+player.position.set(0, C.worldHeight + 5, 0);
+const interaction = new Interaction(camera, scene, player, chunks);
 
 // --- UI & CONTROLS ---
 const uiContainer = document.getElementById('ui-container');
@@ -55,14 +86,14 @@ function updateHotbarUI() {
 }
 
 function showBlockPopup() {
-    clearTimeout(popupTimeout); // Clear previous timeout if switching fast
+    clearTimeout(popupTimeout);
     const blockId = player.getHotbarSelection();
     const blockName = blockTypes[blockId].name;
     popupElement.textContent = blockName.charAt(0).toUpperCase() + blockName.slice(1);
     popupElement.classList.add('show');
     popupTimeout = setTimeout(() => {
         popupElement.classList.remove('show');
-    }, 1500); // Fade out after 1.5 seconds
+    }, 1500);
 }
 
 const instructions = document.getElementById('instructions');
@@ -83,7 +114,6 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// Hotbar selection listener for number keys
 window.addEventListener('keydown', (e) => {
     if (!player.controls.isLocked) return;
     const key = parseInt(e.key);
@@ -93,7 +123,6 @@ window.addEventListener('keydown', (e) => {
         showBlockPopup();
     }
 });
-
 
 // --- GAME LOOP ---
 const clock = new THREE.Clock();
@@ -111,12 +140,14 @@ function animate() {
     }
     
     if(player.controls.isLocked) {
+        updateChunks();
         player.updateCamera();
         interaction.update();
     }
     renderer.render(scene, camera);
 }
 
-// Initial UI setup
+// Initial UI and World Setup
+updateChunks();
 uiContainer.style.display = 'none';
 animate();
