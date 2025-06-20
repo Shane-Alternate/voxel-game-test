@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { setBlock } from './world.js';
-import * as C from './constants.js';
+// Removed 'C' import as it's no longer needed here
 
 export class Interaction {
     // ... constructor remains the same ...
@@ -67,19 +67,18 @@ export class Interaction {
                 z: position.z + normal.z,
             };
 
-            // **UPDATED COLLISION CHECK**
-            // Create a bounding box for the new block
             const newBlockBounds = new THREE.Box3(
                 new THREE.Vector3(placePos.x, placePos.y, placePos.z),
                 new THREE.Vector3(placePos.x + 1, placePos.y + 1, placePos.z + 1)
             );
 
-            // Check if the player's bounding box intersects with the new block's box
             if (this.player.bounds.intersectsBox(newBlockBounds)) {
-                return; // Prevent placing block inside player
+                return;
             }
 
-            setBlock(placePos.x, placePos.y, placePos.z, C.selectedBlockType);
+            // *** Use selected block from hotbar ***
+            const selectedBlockId = this.player.getHotbarSelection();
+            setBlock(placePos.x, placePos.y, placePos.z, selectedBlockId);
             this.worldRenderer.update();
         }
     }
