@@ -6,39 +6,28 @@ import { blockTypes } from './blocks.js';
 const noise2D = createNoise2D();
 const chunks = new Map();
 
-// This global function remains the source of truth for block data across all chunks
 export function getBlock(x, y, z) {
     if (y < 0 || y >= C.worldHeight) return 0;
-
     const chunkX = Math.floor(x / C.chunkSize);
     const chunkZ = Math.floor(z / C.chunkSize);
     const chunkId = `${chunkX},${chunkZ}`;
-    
     const chunk = chunks.get(chunkId);
-    if (!chunk) return 0; // If chunk isn't loaded, it's considered air
-
+    if (!chunk) return 0;
     const localX = THREE.MathUtils.euclideanModulo(x, C.chunkSize);
     const localZ = THREE.MathUtils.euclideanModulo(z, C.chunkSize);
-
     return chunk.getBlock(localX, y, localZ);
 }
 
 export function setBlock(x, y, z, type) {
     if (y < 0 || y >= C.worldHeight) return;
-
     const chunkX = Math.floor(x / C.chunkSize);
     const chunkZ = Math.floor(z / C.chunkSize);
     const chunkId = `${chunkX},${chunkZ}`;
-
     const chunk = chunks.get(chunkId);
     if (!chunk) return;
-
     const localX = THREE.MathUtils.euclideanModulo(x, C.chunkSize);
     const localZ = THREE.MathUtils.euclideanModulo(z, C.chunkSize);
-    
     chunk.setBlock(localX, y, localZ, type);
-
-    // If the block is on a chunk boundary, the neighbor chunk also needs to update its mesh
     if (localX === 0) chunks.get(`${chunkX - 1},${chunkZ}`)?.updateMesh();
     if (localX === C.chunkSize - 1) chunks.get(`${chunkX + 1},${chunkZ}`)?.updateMesh();
     if (localZ === 0) chunks.get(`${chunkX},${chunkZ - 1}`)?.updateMesh();
@@ -91,8 +80,6 @@ export class Chunk {
             this.mesh.geometry.dispose();
             if (Array.isArray(this.mesh.material)) {
                 this.mesh.material.forEach(material => material.dispose());
-            } else {
-                this.mesh.material.dispose();
             }
             this.mesh = null;
         }
@@ -116,7 +103,6 @@ export class Chunk {
                     const data = geometryData[blockType];
 
                     for (const { dir, corners, uv } of faces) {
-                        // *** FIX: Direct and correct neighbor check ***
                         const neighbor = getBlock(worldX + dir[0], worldY + dir[1], worldZ + dir[2]);
                         
                         if (neighbor === 0) { // If the neighbor is air, draw this face
@@ -143,47 +129,12 @@ export class Chunk {
         if (Object.keys(geometryData).length === 0) return;
 
         const finalGeometry = new THREE.BufferGeometry();
-        const materials = [];
-        let vertexOffset = 0;
-        let indexOffset = 0;
-
-        for (const blockType in geometryData) {
-            const data = geometryData[blockType];
-            if (data.vertexCount === 0) continue;
-            
-            const positionAttribute = new THREE.Float32BufferAttribute(data.positions, 3);
-            const normalAttribute = new THREE.Float32BufferAttribute(data.normals, 3);
-            const uvAttribute = new THREE.Float32BufferAttribute(data.uvs, 2);
-            const colorAttribute = new THREE.Float32BufferAttribute(data.colors, 3);
-            const indexAttribute = new THREE.Uint32BufferAttribute(data.indices.map(i => i + vertexOffset), 1);
-            
-            if (vertexOffset === 0) {
-                finalGeometry.setAttribute('position', positionAttribute);
-                finalGeometry.setAttribute('normal', normalAttribute);
-                finalGeometry.setAttribute('uv', uvAttribute);
-                finalGeometry.setAttribute('color', colorAttribute);
-                finalGeometry.setIndex(indexAttribute);
-            } else {
-                // This part is for merging geometries, but we can simplify
-                // by creating one large set of arrays first.
-            }
-            
-            const material = blockTypes[blockType].material.clone();
-            material.vertexColors = true;
-            finalGeometry.addGroup(indexOffset, data.indices.length, materials.length);
-            materials.push(material);
-
-            vertexOffset += data.vertexCount;
-            indexOffset += data.indices.length;
-        }
-
-        // --- Refactored Geometry Combination Logic ---
         const finalPositions = [], finalNormals = [], finalUvs = [], finalColors = [], finalIndices = [];
+        const materials = [];
         let overallVertexCount = 0;
         let overallIndexCount = 0;
-        materials.length = 0; // Clear materials array
 
-        for (const blockType of Object.keys(geometryData)) {
+        for (const blockType in geometryData) {
             const data = geometryData[blockType];
             if (data.vertexCount === 0) continue;
 
@@ -205,6 +156,8 @@ export class Chunk {
             overallIndexCount += data.indices.length;
         }
         
+        if (overallVertexCount === 0) return;
+
         finalGeometry.setAttribute('position', new THREE.Float32BufferAttribute(finalPositions, 3));
         finalGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(finalNormals, 3));
         finalGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(finalUvs, 2));
@@ -233,67 +186,4 @@ export class Chunk {
     }
 }
 
-
-// --- Pre-computed face data to simplify mesh generation loop ---
-const faces = [
-    { // px
-      dir: [ 1,  0,  0, ],
-      corners: [
-        { pos: [ 1, 0, 0 ], ao: [ [ 0, -1, 0 ], [ 0, 0, -1 ], [ 0, -1, -1 ] ] },
-        { pos: [ 1, 1, 0 ], ao: [ [ 0, 1, 0 ], [ 0, 0, -1 ], [ 0, 1, -1 ] ] },
-        { pos: [ 1, 1, 1 ], ao: [ [ 0, 1, 0 ], [ 0, 0, 1 ], [ 0, 1, 1 ] ] },
-        { pos: [ 1, 0, 1 ], ao: [ [ 0, -1, 0 ], [ 0, 0, 1 ], [ 0, -1, 1 ] ] },
-      ],
-      uv: [ 0, 0, 0, 1, 1, 1, 1, 0 ],
-    },
-    { // nx
-      dir: [ -1, 0, 0, ],
-      corners: [
-        { pos: [ 0, 0, 1 ], ao: [ [ 0, -1, 0 ], [ 0, 0, 1 ], [ 0, -1, 1 ] ] },
-        { pos: [ 0, 1, 1 ], ao: [ [ 0, 1, 0 ], [ 0, 0, 1 ], [ 0, 1, 1 ] ] },
-        { pos: [ 0, 1, 0 ], ao: [ [ 0, 1, 0 ], [ 0, 0, -1 ], [ 0, 1, -1 ] ] },
-        { pos: [ 0, 0, 0 ], ao: [ [ 0, -1, 0 ], [ 0, 0, -1 ], [ 0, -1, -1 ] ] },
-      ],
-      uv: [ 0, 0, 0, 1, 1, 1, 1, 0 ],
-    },
-    { // py
-      dir: [ 0, 1, 0, ],
-      corners: [
-        { pos: [ 0, 1, 0 ], ao: [ [ -1, 0, 0 ], [ 0, 0, -1 ], [ -1, 0, -1 ] ] },
-        { pos: [ 0, 1, 1 ], ao: [ [ -1, 0, 0 ], [ 0, 0, 1 ], [ -1, 0, 1 ] ] },
-        { pos: [ 1, 1, 1 ], ao: [ [ 1, 0, 0 ], [ 0, 0, 1 ], [ 1, 0, 1 ] ] },
-        { pos: [ 1, 1, 0 ], ao: [ [ 1, 0, 0 ], [ 0, 0, -1 ], [ 1, 0, -1 ] ] },
-      ],
-      uv: [ 0, 0, 0, 1, 1, 1, 1, 0 ],
-    },
-    { // ny
-      dir: [ 0, -1, 0, ],
-      corners: [
-        { pos: [ 0, 0, 1 ], ao: [ [ -1, 0, 0 ], [ 0, 0, 1 ], [ -1, 0, 1 ] ] },
-        { pos: [ 0, 0, 0 ], ao: [ [ -1, 0, 0 ], [ 0, 0, -1 ], [ -1, 0, -1 ] ] },
-        { pos: [ 1, 0, 0 ], ao: [ [ 1, 0, 0 ], [ 0, 0, -1 ], [ 1, 0, -1 ] ] },
-        { pos: [ 1, 0, 1 ], ao: [ [ 1, 0, 0 ], [ 0, 0, 1 ], [ 1, 0, 1 ] ] },
-      ],
-      uv: [ 0, 0, 0, 1, 1, 1, 1, 0 ],
-    },
-    { // pz
-      dir: [ 0, 0, 1, ],
-      corners: [
-        { pos: [ 0, 0, 1 ], ao: [ [ -1, 0, 0 ], [ 0, -1, 0 ], [ -1, -1, 0 ] ] },
-        { pos: [ 0, 1, 1 ], ao: [ [ -1, 0, 0 ], [ 0, 1, 0 ], [ -1, 1, 0 ] ] },
-        { pos: [ 1, 1, 1 ], ao: [ [ 1, 0, 0 ], [ 0, 1, 0 ], [ 1, 1, 0 ] ] },
-        { pos: [ 1, 0, 1 ], ao: [ [ 1, 0, 0 ], [ 0, -1, 0 ], [ 1, -1, 0 ] ] },
-      ],
-      uv: [ 0, 0, 0, 1, 1, 1, 1, 0 ],
-    },
-    { // nz
-      dir: [ 0, 0, -1, ],
-      corners: [
-        { pos: [ 1, 0, 0 ], ao: [ [ 1, 0, 0 ], [ 0, -1, 0 ], [ 1, -1, 0 ] ] },
-        { pos: [ 1, 1, 0 ], ao: [ [ 1, 0, 0 ], [ 0, 1, 0 ], [ 1, 1, 0 ] ] },
-        { pos: [ 0, 1, 0 ], ao: [ [ -1, 0, 0 ], [ 0, 1, 0 ], [ -1, 1, 0 ] ] },
-        { pos: [ 0, 0, 0 ], ao: [ [ -1, 0, 0 ], [ 0, -1, 0 ], [ -1, -1, 0 ] ] },
-      ],
-      uv: [ 0, 0, 0, 1, 1, 1, 1, 0 ],
-    },
-];
+const faces = [{dir:[1,0,0],corners:[{pos:[1,0,0],ao:[[0,-1,0],[0,0,-1],[0,-1,-1]]},{pos:[1,1,0],ao:[[0,1,0],[0,0,-1],[0,1,-1]]},{pos:[1,1,1],ao:[[0,1,0],[0,0,1],[0,1,1]]},{pos:[1,0,1],ao:[[0,-1,0],[0,0,1],[0,-1,1]]}],uv:[0,0,0,1,1,1,1,0]},{dir:[-1,0,0],corners:[{pos:[0,0,1],ao:[[0,-1,0],[0,0,1],[0,-1,1]]},{pos:[0,1,1],ao:[[0,1,0],[0,0,1],[0,1,1]]},{pos:[0,1,0],ao:[[0,1,0],[0,0,-1],[0,1,-1]]},{pos:[0,0,0],ao:[[0,-1,0],[0,0,-1],[0,-1,-1]]}],uv:[0,0,0,1,1,1,1,0]},{dir:[0,1,0],corners:[{pos:[0,1,0],ao:[[-1,0,0],[0,0,-1],[-1,0,-1]]},{pos:[0,1,1],ao:[[-1,0,0],[0,0,1],[-1,0,1]]},{pos:[1,1,1],ao:[[1,0,0],[0,0,1],[1,0,1]]},{pos:[1,1,0],ao:[[1,0,0],[0,0,-1],[1,0,-1]]}],uv:[0,0,0,1,1,1,1,0]},{dir:[0,-1,0],corners:[{pos:[0,0,1],ao:[[-1,0,0],[0,0,1],[-1,0,1]]},{pos:[0,0,0],ao:[[-1,0,0],[0,0,-1],[-1,0,-1]]},{pos:[1,0,0],ao:[[1,0,0],[0,0,-1],[1,0,-1]]},{pos:[1,0,1],ao:[[1,0,0],[0,0,1],[1,0,1]]}],uv:[0,0,0,1,1,1,1,0]},{dir:[0,0,1],corners:[{pos:[0,0,1],ao:[[-1,0,0],[0,-1,0],[-1,-1,0]]},{pos:[0,1,1],ao:[[-1,0,0],[0,1,0],[-1,1,0]]},{pos:[1,1,1],ao:[[1,0,0],[0,1,0],[1,1,0]]},{pos:[1,0,1],ao:[[1,0,0],[0,-1,0],[1,-1,0]]}],uv:[0,0,0,1,1,1,1,0]},{dir:[0,0,-1],corners:[{pos:[1,0,0],ao:[[1,0,0],[0,-1,0],[1,-1,0]]},{pos:[1,1,0],ao:[[1,0,0],[0,1,0],[1,1,0]]},{pos:[0,1,0],ao:[[-1,0,0],[0,1,0],[-1,1,0]]},{pos:[0,0,0],ao:[[-1,0,0],[0,-1,0],[-1,-1,0]]}],uv:[0,0,0,1,1,1,1,0]}];
