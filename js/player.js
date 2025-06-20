@@ -4,7 +4,6 @@ import * as C from './constants.js';
 import { getBlock } from './world.js';
 
 export class Player {
-    // ... constructor and other methods remain the same ...
     constructor(camera, domElement) {
         this.camera = camera;
         this.controls = new PointerLockControls(camera, domElement);
@@ -55,38 +54,40 @@ export class Player {
         );
     }
     
-    // --- COMPLETELY REWRITTEN PHYSICS UPDATE ---
+    // --- REFINED PHYSICS UPDATE ---
     physicsUpdate(deltaTime) {
-        // --- 1. GATHER INPUT ---
-        const input = new THREE.Vector3();
+        // --- 1. GET MOVEMENT DIRECTION VECTORS FROM CAMERA ---
+        const forward = new THREE.Vector3();
+        this.camera.getWorldDirection(forward);
+        forward.y = 0; // Move on the XZ plane
+        forward.normalize();
+
+        // Calculate the "right" vector by taking the cross product of the forward vector and the world's up vector
+        const right = new THREE.Vector3();
+        right.crossVectors(forward, this.camera.up).negate(); // Negate because cross product order gives "left"
+
+        // --- 2. GATHER INPUT AND BUILD DIRECTION ---
+        const inputDirection = new THREE.Vector3();
         if (this.controls.isLocked) {
-            if (this.keys['KeyW']) input.z = -1;
-            if (this.keys['KeyS']) input.z = 1;
-            if (this.keys['KeyA']) input.x = -1;
-            if (this.keys['KeyD']) input.x = 1;
+            if (this.keys['KeyW']) inputDirection.add(forward);
+            if (this.keys['KeyS']) inputDirection.sub(forward);
+            if (this.keys['KeyA']) inputDirection.sub(right);
+            if (this.keys['KeyD']) inputDirection.add(right);
         }
         
-        // --- 2. HORIZONTAL MOVEMENT (ACCELERATION & DRAG) ---
+        // --- 3. HORIZONTAL MOVEMENT (ACCELERATION & DRAG) ---
         const drag = this.onGround ? C.groundDrag : C.airDrag;
         const targetSpeed = this.isSprinting ? C.sprintSpeed : C.walkSpeed;
 
-        // Apply drag to slow down the player
         this.velocity.x -= this.velocity.x * drag * deltaTime;
         this.velocity.z -= this.velocity.z * drag * deltaTime;
 
-        if (input.lengthSq() > 0) {
-            input.normalize();
-            
-            // Rotate input vector to match camera direction
-            const euler = new THREE.Euler(0, this.camera.rotation.y, 0, 'YXZ');
-            input.applyEuler(euler);
-
-            // Accelerate the player
-            this.velocity.x += input.x * C.horizontalAcceleration * deltaTime;
-            this.velocity.z += input.z * C.horizontalAcceleration * deltaTime;
+        if (inputDirection.lengthSq() > 0) {
+            inputDirection.normalize();
+            this.velocity.x += inputDirection.x * C.horizontalAcceleration * deltaTime;
+            this.velocity.z += inputDirection.z * C.horizontalAcceleration * deltaTime;
         }
         
-        // Clamp horizontal velocity to the maximum speed
         const horizontalVelocity = new THREE.Vector2(this.velocity.x, this.velocity.z);
         if (horizontalVelocity.length() > targetSpeed) {
             horizontalVelocity.normalize().multiplyScalar(targetSpeed);
@@ -94,7 +95,7 @@ export class Player {
             this.velocity.z = horizontalVelocity.y;
         }
 
-        // --- 3. VERTICAL MOVEMENT (GRAVITY, DRAG & JUMP) ---
+        // --- 4. VERTICAL MOVEMENT (GRAVITY, DRAG & JUMP) ---
         this.velocity.y -= C.gravity * deltaTime;
         this.velocity.y *= Math.pow(C.verticalDrag, deltaTime);
 
@@ -102,7 +103,7 @@ export class Player {
             this.velocity.y = C.jumpInitialVelocity;
         }
 
-        // --- 4. APPLY VELOCITY AND CHECK COLLISIONS ---
+        // --- 5. APPLY VELOCITY AND CHECK COLLISIONS ---
         this.onGround = false;
         this.position.x += this.velocity.x * deltaTime;
         this.handleXCollisions();
