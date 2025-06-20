@@ -17,7 +17,7 @@ document.body.appendChild(renderer.domElement);
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
 scene.add(ambientLight);
 const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-directionalLight.position.set(50, 50, 50); // Position light to cast some shadows
+directionalLight.position.set(50, 50, 50);
 scene.add(directionalLight);
 
 // --- CHUNK MANAGEMENT ---
@@ -43,8 +43,12 @@ function updateChunks() {
             // If the chunk doesn't exist, create it
             if (!chunks.has(id)) {
                 const chunk = new Chunk(scene, x, z);
+                
+                // 1. Fill the chunk data array without updating the mesh
                 chunk.generate();
+                // 2. Build the mesh ONCE after all data is ready to prevent freezing
                 chunk.updateMesh();
+                
                 chunks.set(id, chunk);
             }
         }
@@ -100,11 +104,17 @@ const instructions = document.getElementById('instructions');
 const startButton = document.getElementById('startButton');
 startButton.addEventListener('click', () => {
     player.controls.lock();
+});
+player.controls.addEventListener('lock', () => {
+    instructions.style.display = 'none';
+    uiContainer.style.display = 'flex';
     updateHotbarUI();
     showBlockPopup();
 });
-player.controls.addEventListener('lock', () => { instructions.style.display = 'none'; uiContainer.style.display = 'flex'; });
-player.controls.addEventListener('unlock', () => { instructions.style.display = 'block'; uiContainer.style.display = 'none'; });
+player.controls.addEventListener('unlock', () => {
+    instructions.style.display = 'block';
+    uiContainer.style.display = 'none';
+});
 
 window.addEventListener('mousedown', (e) => interaction.handleMouseClick(e));
 window.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -131,6 +141,7 @@ let accumulator = 0;
 function animate() {
     requestAnimationFrame(animate);
 
+    // Fixed-step physics loop
     accumulator += clock.getDelta();
     while (accumulator >= C.fixedUpdateInterval) {
         if(player.controls.isLocked) {
@@ -139,6 +150,7 @@ function animate() {
         accumulator -= C.fixedUpdateInterval;
     }
     
+    // Render loop
     if(player.controls.isLocked) {
         updateChunks();
         player.updateCamera();
@@ -147,7 +159,7 @@ function animate() {
     renderer.render(scene, camera);
 }
 
-// Initial UI and World Setup
+// --- INITIALIZATION ---
 updateChunks();
 uiContainer.style.display = 'none';
 animate();
