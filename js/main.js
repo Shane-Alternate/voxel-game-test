@@ -10,7 +10,6 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87CEEB);
 
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(C.worldWidth / 2, C.worldHeight + 5, C.worldDepth / 2);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -30,6 +29,7 @@ worldRenderer.update();
 
 // --- PLAYER & INTERACTION ---
 const player = new Player(camera, document.body);
+player.position.set(C.worldWidth / 2, C.worldHeight, C.worldDepth / 2); // Set initial player position
 const interaction = new Interaction(camera, scene, worldRenderer, player);
 
 // --- UI & CONTROLS ---
@@ -50,13 +50,21 @@ window.addEventListener('resize', () => {
 
 // --- GAME LOOP ---
 const clock = new THREE.Clock();
+let accumulator = 0;
+
 function animate() {
     requestAnimationFrame(animate);
-    const deltaTime = clock.getDelta();
 
-    player.update(deltaTime);
-    interaction.update();
-
+    // --- FIXED-STEP PHYSICS LOOP ---
+    accumulator += clock.getDelta();
+    while (accumulator >= C.fixedUpdateInterval) {
+        player.physicsUpdate(C.fixedUpdateInterval);
+        accumulator -= C.fixedUpdateInterval;
+    }
+    
+    // --- RENDER/VISUALS UPDATE ---
+    player.updateCamera();      // Update camera based on player's final physical position
+    interaction.update();       // Update highlight box based on new camera position
     renderer.render(scene, camera);
 }
 
