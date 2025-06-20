@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import * as C from './constants.js';
-import { getBlock } from './world.js';
+import { getBlock } from './chunk.js';
 
 export class Player {
     constructor(camera, domElement) {
@@ -19,6 +19,8 @@ export class Player {
 
         this.bounds = new THREE.Box3();
         this.halfWidth = C.playerWidth / 2;
+        
+        this.currentChunkId = '0,0';
 
         document.addEventListener('keydown', (e) => this.onKey(e.code, true));
         document.addEventListener('keyup', (e) => this.onKey(e.code, false));
@@ -41,41 +43,32 @@ export class Player {
         return this.hotbar[this.selectedSlot];
     }
     
+    getChunkCoords() {
+        const chunkX = Math.floor(this.position.x / C.chunkSize);
+        const chunkZ = Math.floor(this.position.z / C.chunkSize);
+        return { chunkX, chunkZ };
+    }
+
     updateBounds() {
-        this.bounds.min.set(
-            this.position.x - this.halfWidth, 
-            this.position.y, 
-            this.position.z - this.halfWidth
-        );
-        this.bounds.max.set(
-            this.position.x + this.halfWidth, 
-            this.position.y + C.playerHeight, 
-            this.position.z + this.halfWidth
-        );
+        this.bounds.min.set(this.position.x - this.halfWidth, this.position.y, this.position.z - this.halfWidth);
+        this.bounds.max.set(this.position.x + this.halfWidth, this.position.y + C.playerHeight, this.position.z + this.halfWidth);
     }
     
-    // --- REFINED PHYSICS UPDATE ---
     physicsUpdate(deltaTime) {
-        // --- 1. GET MOVEMENT DIRECTION VECTORS FROM CAMERA ---
         const forward = new THREE.Vector3();
         this.camera.getWorldDirection(forward);
-        forward.y = 0; // Move on the XZ plane
+        forward.y = 0;
         forward.normalize();
+        const right = new THREE.Vector3().crossVectors(this.camera.up, forward).negate();
 
-        // Calculate the "right" vector by taking the cross product of the forward vector and the world's up vector
-        const right = new THREE.Vector3();
-        right.crossVectors(forward, this.camera.up).negate(); // Negate because cross product order gives "left"
-
-        // --- 2. GATHER INPUT AND BUILD DIRECTION ---
         const inputDirection = new THREE.Vector3();
         if (this.controls.isLocked) {
             if (this.keys['KeyW']) inputDirection.add(forward);
             if (this.keys['KeyS']) inputDirection.sub(forward);
-            if (this.keys['KeyA']) inputDirection.sub(right);
-            if (this.keys['KeyD']) inputDirection.add(right);
+            if (this.keys['KeyA']) inputDirection.add(right);
+            if (this.keys['KeyD']) inputDirection.sub(right);
         }
         
-        // --- 3. HORIZONTAL MOVEMENT (ACCELERATION & DRAG) ---
         const drag = this.onGround ? C.groundDrag : C.airDrag;
         const targetSpeed = this.isSprinting ? C.sprintSpeed : C.walkSpeed;
 
@@ -95,7 +88,6 @@ export class Player {
             this.velocity.z = horizontalVelocity.y;
         }
 
-        // --- 4. VERTICAL MOVEMENT (GRAVITY, DRAG & JUMP) ---
         this.velocity.y -= C.gravity * deltaTime;
         this.velocity.y *= Math.pow(C.verticalDrag, deltaTime);
 
@@ -103,7 +95,6 @@ export class Player {
             this.velocity.y = C.jumpInitialVelocity;
         }
 
-        // --- 5. APPLY VELOCITY AND CHECK COLLISIONS ---
         this.onGround = false;
         this.position.x += this.velocity.x * deltaTime;
         this.handleXCollisions();
@@ -113,16 +104,18 @@ export class Player {
         this.handleYCollisions();
         
         if (this.position.y < -20) {
-            this.position.set(C.worldWidth / 2, C.worldHeight + 5, C.worldDepth / 2);
+            this.position.set(0, C.worldHeight + 5, 0);
             this.velocity.set(0, 0, 0);
         }
+
+        const { chunkX, chunkZ } = this.getChunkCoords();
+        this.currentChunkId = `${chunkX},${chunkZ}`;
     }
 
     updateCamera() {
         this.camera.position.set(this.position.x, this.position.y + C.playerEyeHeight, this.position.z);
     }
     
-    // --- Collision methods remain unchanged ---
     handleXCollisions() {
         this.updateBounds();
         const [x1, x2] = [Math.floor(this.bounds.min.x), Math.floor(this.bounds.max.x)];
